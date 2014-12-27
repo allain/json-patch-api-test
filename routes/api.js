@@ -30,6 +30,23 @@ module.exports = function(app, io) {
     });
   });
 
+  app.post('/api/:name/patches', function(req, res) {
+    var store = stores(req.params.name);
+
+    var patch = req.body;
+    if (!Array.isArray(patch)) {
+      return res.status(400).json({error: 'malformed patch'});
+    }
+
+    store.patch(patch, function(err, patch) {
+      if (err) {
+        return res.status(500).json(err);
+      }
+
+      res.end();
+    });
+  });
+
   app.put('/api/:name', function(req, res) {
     var store = stores(req.params.name);
 

@@ -2,24 +2,31 @@ module.exports = Store;
 
 var xhr = require('xhr');
 var jiff = require('jiff');
-var debug = require('debug')('Store');
-
-debug('hello world');
+var util = require('util');
+var EventEmitter2 = require('eventemitter2').EventEmitter2;
 
 function Store(name, initialDoc, initialTimestamp) {
+  var self = this;
+
+  EventEmitter2.call(this);
+
+  var debug = require('debug')('local-store:' + name);
   var patches = io('/patches/' + name).connect();
   var state;
 
   var storedJSON = localStorage.getItem('store-' + name);
   if (storedJSON) {
-    debug('store loaded from localStorage: %s', name);
+    debug('store loaded from localStorage');
     state = JSON.parse(storedJSON);
     pullPatches(function(err) {
-      console.log('patches pulled');
+      if (err) {
+        debug('error pulling initial patches', err);
+        return;
+      }
 
-      patches.on('patch', function(patch){
-        applyPatches([patch]);
-      });
+      self.emit('change', state.doc);
+
+      listenToStream();
     });
   } else {
     state = {
@@ -40,6 +47,7 @@ function Store(name, initialDoc, initialTimestamp) {
       state.ts = parseInt(resp.headers['x-last-patch'], 10);
 
       localStorage.setItem('store-' + name, JSON.stringify(state));
+      listenToStream();
     });
   }
 
@@ -58,12 +66,22 @@ function Store(name, initialDoc, initialTimestamp) {
       }
 
       var patches = JSON.parse(body);
+      debug('patches pulled', patches);
       applyPatches(patches);
       cb();
     }
   }
 
+  function listenToStream() {
+    debug('listening to patch stream');
+    patches.on('patch', function(patch) {
+      debug('patch received from stream', patch);
+      applyPatches([patch]);
+    });
+  }
+
   function applyPatches(patches) {
+    debug('applying patches', patches);
     if (!patches.length) return;
 
     var patched = state.doc;
@@ -76,6 +94,10 @@ function Store(name, initialDoc, initialTimestamp) {
     state.doc = patched;
     state.ts = ts;
 
+    self.emit('change', state.doc);
+
     localStorage.setItem('store-' + name, JSON.stringify(state));
   }
 }
+
+util.inherits(Store, EventEmitter2);
