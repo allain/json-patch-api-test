@@ -2,86 +2,47 @@ var express = require('express');
 var jiff = require('jiff');
 var debug = require('debug')('api-test');
 
-var mongojs = require('mongojs');
+module.exports = function(app, io) {
+  var stores = require('../lib/store.js')(io);
 
-var db = mongojs('localhost/api-test', ['docs']);
+  app.get('/api/:name', function(req, res) {
+    var store = stores(req.params.name);
 
-var router = express.Router();
+    store.snapshot(function(err, snapshot) {
+      if (err) {
+        return res.status(500).json(err);
+      }
 
-function objectHash(obj) {
-  return obj.id || obj._id || obj.hash || JSON.stringify(obj);
-}
-
-var apiDoc;
-
-function loadDoc(cb) {
-  if (apiDoc !== undefined) return cb(null, apiDoc);
-
-  return db.docs.findOne({name: 'test1'}, function(err, doc) {
-    if (err) return cb(err);
-
-    if (doc) {
-      apiDoc = doc;
-      return cb(null, apiDoc);
-    }
-
-    db.docs.insert({name: 'test1', data: {}, patches: []}, function(err, inserted) {
-      if (err) return cb(err);
-
-      apiDoc = inserted;
-      cb(null, apiDoc);
+      res.set('X-Last-Patch', snapshot.ts || 0);
+      res.json(snapshot.doc || {});
     });
   });
-}
 
+  app.get('/api/:name/patches', function(req, res) {
+    var store = stores(req.params.name);
 
+    store.patches(parseInt(req.query.after || '0', 10), function(err, patches) {
+      if (err) {
+        return res.status(500).json(err);
+      }
 
-router.get('/', function(req, res) {
-  loadDoc(function(err, apiDoc) {
-    if (err) {
-      return res.status(500).json(err);
-    }
-    var patches = apiDoc.patches;
-    var lastPatch = patches.length ? patches[patches.length - 1].ts : 0;
-    res.set('X-Last-Patch', lastPatch);
-    res.json(apiDoc.data);
+      res.json(patches);
+    });
   });
-});
 
-router.get('/patches', function(req, res) {
-  loadDoc(function(err, apiDoc) {
-    if (err) {
-      return res.status(500).json(err);
-    }
+  app.put('/api/:name', function(req, res) {
+    var store = stores(req.params.name);
 
-    console.log(apiDoc);
+    store.update(req.body, function(err, diff) {
+      if (err) {
+        return res.status(500).json(err);
+      }
 
-    res.json(apiDoc.patches);
+      if (diff.length) {
+        res.json(diff);
+      } else {
+        res.status(204).send('No Change');
+      }
+    });
   });
-});
-
-router.put('/', function(req, res) {
-  loadDoc(function(err, apiDoc) {
-    if (err) {
-      return res.status(500).json(err);
-    }
-
-    // clone data
-    var newData = req.body;
-    var diff = jiff.diff(apiDoc.data, newData, objectHash);
-    if (diff.length) {
-      var patch = [Date.now(), diff];
-      apiDoc.patches.push(patch);
-      apiDoc.data = newData;
-      res.json(diff);
-
-      db.docs.update({name: 'test1'}, {$set: {data: newData}, $push: {patches: patch}}, function(err) {
-        console.log(err);
-      });
-    } else {
-      res.status(204).send('No Change');
-    }
-  });
-});
-
-module.exports = router;
+};
