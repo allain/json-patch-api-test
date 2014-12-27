@@ -4,7 +4,7 @@ var Schema = mongoose.Schema;
 var PatchSchema = new Schema({
   ts: { type: Number },
   diff: { type: [Schema.Types.Mixed] },
-  name: String
+  snapshotId: { type: Schema.Types.Objectid }
 });
 
 var Patch = mongoose.model('Patch', PatchSchema);
