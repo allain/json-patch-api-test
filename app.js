@@ -39,7 +39,7 @@ server.listen(app.get('port'), function() {
 
 var io = require('socket.io')(server);
 
-require('./routes/api')(app, io);
+app.use('/api', require('json-patch-api')(io));
 app.use('/', routes);
 
 // catch 404 and forward to error handler
